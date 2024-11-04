@@ -7,18 +7,18 @@ import QRCode from './Components/QRCode';
 import axios from 'axios';
 
 const App = () => {
-  // State管理
-  const [isStarted, setIsStarted] = useState(false);
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(-1);
-  const [currentQuestion, setCurrentQuestion] = useState('');
-  const [answers, setAnswers] = useState([]);
-  const [answer, setAnswer] = useState('');
-  const [isRecording, setIsRecording] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [musicData, setMusicData] = useState(null);
-  const [notification, setNotification] = useState({ type: '', message: '' });
-  const [generationStatus, setGenerationStatus] = useState(null);
+  // State管理を修正
+const [isStarted, setIsStarted] = useState(false);
+const [currentQuestionIndex, setCurrentQuestionIndex] = useState(-1);
+const [currentQuestion, setCurrentQuestion] = useState('');
+const [answers, setAnswers] = useState([]);
+const [answer, setAnswer] = useState('');
+const [isRecording, setIsRecording] = useState(false);
+const [isSpeaking, setIsSpeaking] = useState(false);
+const [isGenerating, setIsGenerating] = useState(false);
+const [musicData, setMusicData] = useState(null);
+const [notification, setNotification] = useState({ type: '', message: '' });
+const [generationStatus, setGenerationStatus] = useState(null);
 
   // Refs
   const audioPlayer = useRef(new Audio());
@@ -255,25 +255,25 @@ const App = () => {
         }
       }, 3000);
 
-      // 音楽生成リクエスト
-      const response = await axios.post(`${API_URL}/generate-music`, {
-        answers
+       // 音楽生成リクエスト
+    const response = await axios.post(`${API_URL}/generate-music`, {
+      answers
+    });
+
+    clearInterval(progressInterval);
+
+    if (response.data.video_url) {
+      setMusicData({
+        video_url: response.data.video_url
       });
-
-      clearInterval(progressInterval);
-
-      if (response.data.video_url) {
-        setMusicData({
-          video_url: response.data.video_url
-        });
-        setGenerationStatus('complete');
-        window.open(response.data.video_url, '_blank');
-        setNotification({
-          type: 'success',
-          message: 'ミュージックビデオの生成が完了しました！'
-        });
-      }
-    } catch (error) {
+      setGenerationStatus('complete');
+      window.open(response.data.video_url, '_blank');
+      setNotification({
+        type: 'success',
+        message: 'ミュージックビデオの生成が完了しました！'
+      });
+    }
+  } catch (error) {
       console.error('Error generating music:', error);
       setGenerationStatus(null);
       setNotification({
@@ -326,10 +326,10 @@ const App = () => {
               </button>
             </div>
           </div>
-
+  
           {/* メインコンテンツエリア */}
           <div className="bg-paper-DEFAULT rounded-lg p-6 shadow-inner paper-texture">
-            {currentQuestionIndex === -1 ? (
+            {!isStarted ? (
               // スタート前の画面
               <div className="text-center py-12">
                 <h2 className="text-2xl font-handwriting mb-6">
@@ -356,7 +356,7 @@ const App = () => {
                     emotion={currentQuestion ? 'happy' : 'neutral'} 
                   />
                 </div>
-
+  
                 {/* 質問表示エリア */}
                 {currentQuestion && (
                   <NotePaper accent="green">
@@ -365,7 +365,7 @@ const App = () => {
                     </p>
                   </NotePaper>
                 )}
-
+  
                 {/* 回答入力エリア */}
                 <div className="mt-4 space-y-4">
                   <div className="relative">
@@ -412,16 +412,16 @@ const App = () => {
                     </button>
                   </div>
                 </div>
-
-                {/* 生成状態表示 */}
-                {isGenerating && (
+  
+                {/* 進捗表示 */}
+                {generationStatus && (
                   <div className="mt-6">
-                    <GenerationProgress />
+                    <GenerationProgress status={generationStatus} />
                   </div>
                 )}
-
+  
                 {/* 完了メッセージとQRコード */}
-                {musicUrl && (
+                {musicData && musicData.video_url && (
                   <div className="mt-6 space-y-4">
                     <NotePaper accent="green">
                       <p className="text-green-600 text-center font-bold mb-2">
@@ -429,7 +429,7 @@ const App = () => {
                       </p>
                       <div className="flex flex-col items-center gap-4">
                         <button
-                          onClick={() => window.open(musicUrl, '_blank')}
+                          onClick={() => window.open(musicData.video_url, '_blank')}
                           className="w-full max-w-sm bg-blue-500 hover:bg-blue-600 
                             text-white px-6 py-3 rounded-lg font-handwriting 
                             transition-colors shadow-md transform hover:scale-105 
@@ -440,7 +440,7 @@ const App = () => {
                         
                         {/* QRコード表示エリア */}
                         <div className="w-full max-w-sm">
-                          <QRCode url={musicUrl} />
+                          <QRCode url={musicData.video_url} />
                         </div>
                       </div>
                     </NotePaper>
@@ -451,7 +451,7 @@ const App = () => {
           </div>
         </div>
       </div>
-
+  
       {/* 通知メッセージ */}
       {notification.message && (
         <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2">
