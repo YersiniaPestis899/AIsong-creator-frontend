@@ -136,11 +136,13 @@ const App = () => {
     }, Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000));
   }, []);
 
-  // WebSocket接続
-  const connectWebSocket = useCallback(() => {
-    if (ws.current?.readyState === WebSocket.OPEN || isUnmounting.current) return;
+  // WebSocket接続処理
+const connectWebSocket = useCallback(() => {
+  if (ws.current?.readyState === WebSocket.OPEN || isUnmounting.current) return;
 
-    console.log('Connecting to WebSocket:', WS_URL);
+  console.log('Connecting to WebSocket:', WS_URL);
+  
+  try {
     ws.current = new WebSocket(WS_URL);
 
     ws.current.onopen = () => {
@@ -152,6 +154,7 @@ const App = () => {
 
     ws.current.onmessage = async (event) => {
       try {
+        console.log('Received message:', event.data);
         const data = JSON.parse(event.data);
         await handleWebSocketMessage(data);
       } catch (error) {
@@ -160,7 +163,7 @@ const App = () => {
     };
 
     ws.current.onclose = (event) => {
-      console.log('WebSocket closed:', event);
+      console.log('WebSocket connection closed:', event);
       setIsStarted(false);
       
       if (isGenerating) {
@@ -168,19 +171,52 @@ const App = () => {
         return;
       }
 
-      if (!isUnmounting.current) {
-        setNotification({ type: 'error', message: 'サーバーとの接続が切断されました' });
-        reconnectWebSocket();
+      // 無料プランの5分切断に対する再接続ロジック
+      if (!isUnmounting.current && reconnectAttempts.current < maxReconnectAttempts) {
+        setNotification({ 
+          type: 'warning', 
+          message: 'サーバーとの接続が切断されました。再接続を試みています...' 
+        });
+        
+        // 指数バックオフを使用した再接続
+        const timeout = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000);
+        reconnectTimeout.current = setTimeout(() => {
+          reconnectAttempts.current += 1;
+          connectWebSocket();
+        }, timeout);
       }
     };
 
     ws.current.onerror = (error) => {
       console.error('WebSocket error:', error);
       if (!isGenerating) {
-        setNotification({ type: 'error', message: 'WebSocket接続エラーが発生しました' });
+        setNotification({ 
+          type: 'error', 
+          message: 'WebSocket接続エラーが発生しました。ネットワーク接続を確認してください。' 
+        });
       }
     };
-  }, [WS_URL, handleWebSocketMessage, isGenerating, reconnectWebSocket]);
+  } catch (error) {
+    console.error('Error creating WebSocket connection:', error);
+    setNotification({ 
+      type: 'error', 
+      message: 'WebSocket接続の作成に失敗しました' 
+    });
+  }
+}, [WS_URL, handleWebSocketMessage, isGenerating]);
+
+// クリーンアップ時の処理
+useEffect(() => {
+  return () => {
+    isUnmounting.current = true;
+    if (reconnectTimeout.current) {
+      clearTimeout(reconnectTimeout.current);
+    }
+    if (ws.current?.readyState === WebSocket.OPEN) {
+      ws.current.close();
+    }
+  };
+}, []);
 
   // インタビューを開始
   const startInterview = useCallback(() => {
