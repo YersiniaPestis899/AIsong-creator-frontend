@@ -8,31 +8,34 @@ import axios from 'axios';
 
 const App = () => {
   // State管理
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(-1);
+  const [isStarted, setIsStarted] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState('');
-  const [answers, setAnswers] = useState([]);
   const [answer, setAnswer] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [musicUrl, setMusicUrl] = useState(null);
+  const [musicError, setMusicError] = useState('');
   const [notification, setNotification] = useState({ type: '', message: '' });
-  const [connected, setConnected] = useState(false);
+  const [generationStatus, setGenerationStatus] = useState(null);
+  const [musicData, setMusicData] = useState(null);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   // Refs
   const audioPlayer = useRef(new Audio());
   const mediaRecorder = useRef(null);
   const ws = useRef(null);
   const reconnectAttempts = useRef(0);
+  const reconnectTimeout = useRef(null);
   const maxReconnectAttempts = 5;
+  const isUnmounting = useRef(false);
 
   // 環境変数からURLを取得
-  const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
   const WS_URL = process.env.REACT_APP_WS_URL || 'ws://localhost:8000/ws';
+  const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
   // WebSocketメッセージ処理
   const handleWebSocketMessage = useCallback(async (data) => {
     try {
+      console.log('Received WebSocket message:', data);
       switch (data.type) {
         case 'speech':
           try {
@@ -50,6 +53,7 @@ const App = () => {
             };
             
             audioPlayer.current.onerror = (error) => {
+              console.error('Audio playback error:', error);
               setIsSpeaking(false);
               URL.revokeObjectURL(audioUrl);
               setNotification({
@@ -59,7 +63,6 @@ const App = () => {
             };
             
             await audioPlayer.current.play();
-            
           } catch (error) {
             console.error('Error playing audio:', error);
             setIsSpeaking(false);
@@ -70,6 +73,17 @@ const App = () => {
           }
           break;
 
+        case 'status_update':
+          if (data.status === 'generating_music') {
+            setIsGenerating(true);
+          }
+          setGenerationStatus(data.status);
+          setNotification({ 
+            type: 'info', 
+            message: data.status === 'generating_music' ? 'ミュージックビデオを生成中です' : '処理中...' 
+          });
+          break;
+
         case 'generation_progress':
           setNotification({
             type: 'info',
@@ -78,14 +92,23 @@ const App = () => {
           break;
           
         case 'music_complete':
-          setMusicUrl(data.data.video_url);
+          setGenerationStatus('complete');
+          setMusicData(data.data);
+          if (data.data.video_url) {
+            window.open(data.data.video_url, '_blank');
+          }
           setNotification({ 
             type: 'success', 
             message: 'ミュージックビデオの生成が完了しました！' 
           });
-          if (data.data.video_url) {
-            window.open(data.data.video_url, '_blank');
-          }
+          setIsGenerating(false);
+          break;
+
+        case 'music_error':
+          setGenerationStatus(null);
+          setMusicError(data.data);
+          setNotification({ type: 'error', message: `エラーが発生しました: ${data.data}` });
+          setIsGenerating(false);
           break;
           
         case 'error':
@@ -98,18 +121,29 @@ const App = () => {
     }
   }, []);
 
+  // WebSocket再接続
+  const reconnectWebSocket = useCallback(() => {
+    if (isUnmounting.current || reconnectAttempts.current >= maxReconnectAttempts) return;
+
+    console.log(`Attempting to reconnect (${reconnectAttempts.current + 1}/${maxReconnectAttempts})`);
+    reconnectTimeout.current = setTimeout(() => {
+      reconnectAttempts.current += 1;
+      connectWebSocket();
+    }, Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000));
+  }, []);
+
   // WebSocket接続
   const connectWebSocket = useCallback(() => {
-    if (ws.current?.readyState === WebSocket.OPEN) return;
+    if (ws.current?.readyState === WebSocket.OPEN || isUnmounting.current) return;
 
     console.log('Connecting to WebSocket:', WS_URL);
     ws.current = new WebSocket(WS_URL);
 
     ws.current.onopen = () => {
-      console.log('WebSocket connected');
-      setConnected(true);
-      reconnectAttempts.current = 0;
+      console.log('WebSocket connected successfully');
       setNotification({ type: 'success', message: 'サーバーに接続しました' });
+      reconnectAttempts.current = 0;
+      setIsStarted(true);
     };
 
     ws.current.onmessage = async (event) => {
@@ -121,10 +155,18 @@ const App = () => {
       }
     };
 
-    ws.current.onclose = () => {
-      setConnected(false);
-      if (!isGenerating) {
+    ws.current.onclose = (event) => {
+      console.log('WebSocket closed:', event);
+      setIsStarted(false);
+      
+      if (isGenerating) {
+        setNotification({ type: 'info', message: '楽曲生成中です。しばらくお待ちください。' });
+        return;
+      }
+
+      if (!isUnmounting.current) {
         setNotification({ type: 'error', message: 'サーバーとの接続が切断されました' });
+        reconnectWebSocket();
       }
     };
 
@@ -134,14 +176,14 @@ const App = () => {
         setNotification({ type: 'error', message: 'WebSocket接続エラーが発生しました' });
       }
     };
-  }, [WS_URL, handleWebSocketMessage, isGenerating]);
+  }, [WS_URL, handleWebSocketMessage, isGenerating, reconnectWebSocket]);
 
   // インタビューを開始
   const startInterview = useCallback(() => {
-    if (!connected) {
-      connectWebSocket();
-    }
-  }, [connected, connectWebSocket]);
+    setIsStarted(true);
+    reconnectAttempts.current = 0;
+    connectWebSocket();
+  }, [connectWebSocket]);
 
   // 録音開始
   const startRecording = async () => {
@@ -235,10 +277,14 @@ const App = () => {
     try {
       if (ws.current?.readyState === WebSocket.OPEN) {
         ws.current.send(answer);
-        const newAnswers = [...answers, answer];
-        setAnswers(newAnswers);
         setAnswer('');
+        setNotification({
+          type: 'success',
+          message: '回答を送信しました'
+        });
       } else {
+        console.log('WebSocket not connected. Attempting to reconnect...');
+        connectWebSocket();
         throw new Error('WebSocket接続が確立されていません');
       }
     } catch (error) {
@@ -255,15 +301,19 @@ const App = () => {
     if (ws.current?.readyState === WebSocket.OPEN) {
       ws.current.close();
     }
-    setCurrentQuestionIndex(-1);
+    if (reconnectTimeout.current) {
+      clearTimeout(reconnectTimeout.current);
+    }
+    reconnectAttempts.current = 0;
     setCurrentQuestion('');
-    setAnswers([]);
     setAnswer('');
     setIsRecording(false);
     setIsSpeaking(false);
     setIsGenerating(false);
-    setMusicUrl(null);
-    setConnected(false);
+    setMusicData(null);
+    setIsStarted(false);
+    setGenerationStatus(null);
+    setMusicError('');
     setNotification({ 
       type: 'info', 
       message: 'アプリケーションをリセットしました' 
@@ -273,6 +323,10 @@ const App = () => {
   // クリーンアップ
   useEffect(() => {
     return () => {
+      isUnmounting.current = true;
+      if (reconnectTimeout.current) {
+        clearTimeout(reconnectTimeout.current);
+      }
       if (ws.current?.readyState === WebSocket.OPEN) {
         ws.current.close();
       }
