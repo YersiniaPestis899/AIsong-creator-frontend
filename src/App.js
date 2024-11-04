@@ -9,6 +9,7 @@ import axios from 'axios';
 const App = () => {
   // State管理
   const [isStarted, setIsStarted] = useState(false);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(-1);  // 追加
   const [currentQuestion, setCurrentQuestion] = useState('');
   const [answer, setAnswer] = useState('');
   const [isRecording, setIsRecording] = useState(false);
@@ -18,6 +19,7 @@ const App = () => {
   const [generationStatus, setGenerationStatus] = useState(null);
   const [musicData, setMusicData] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [musicUrl, setMusicUrl] = useState(null);  // 追加
 
   // Refs
   const audioPlayer = useRef(new Audio());
@@ -91,13 +93,15 @@ const App = () => {
           });
           break;
           
+        // music_completeケースの処理を修正
         case 'music_complete':
           setGenerationStatus('complete');
           setMusicData(data.data);
           if (data.data.video_url) {
+            setMusicUrl(data.data.video_url);  // musicUrlを設定
             window.open(data.data.video_url, '_blank');
           }
-          setNotification({ 
+            setNotification({ 
             type: 'success', 
             message: 'ミュージックビデオの生成が完了しました！' 
           });
@@ -296,29 +300,31 @@ const App = () => {
     }
   };
 
-  // アプリケーションのリセット
-  const resetApplication = () => {
-    if (ws.current?.readyState === WebSocket.OPEN) {
-      ws.current.close();
-    }
-    if (reconnectTimeout.current) {
-      clearTimeout(reconnectTimeout.current);
-    }
-    reconnectAttempts.current = 0;
-    setCurrentQuestion('');
-    setAnswer('');
-    setIsRecording(false);
-    setIsSpeaking(false);
-    setIsGenerating(false);
-    setMusicData(null);
-    setIsStarted(false);
-    setGenerationStatus(null);
-    setMusicError('');
-    setNotification({ 
-      type: 'info', 
-      message: 'アプリケーションをリセットしました' 
-    });
-  };
+  // アプリケーションのリセット処理を修正
+const resetApplication = () => {
+  if (ws.current?.readyState === WebSocket.OPEN) {
+    ws.current.close();
+  }
+  if (reconnectTimeout.current) {
+    clearTimeout(reconnectTimeout.current);
+  }
+  reconnectAttempts.current = 0;
+  setCurrentQuestionIndex(-1);  // 追加
+  setCurrentQuestion('');
+  setAnswer('');
+  setIsRecording(false);
+  setIsSpeaking(false);
+  setIsGenerating(false);
+  setMusicData(null);
+  setMusicUrl(null);  // 追加
+  setIsStarted(false);
+  setGenerationStatus(null);
+  setMusicError('');
+  setNotification({ 
+    type: 'info', 
+    message: 'アプリケーションをリセットしました' 
+  });
+};
 
   // クリーンアップ
   useEffect(() => {
