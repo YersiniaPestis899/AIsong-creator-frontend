@@ -235,27 +235,27 @@ const [generationStatus, setGenerationStatus] = useState(null);
     }
   };
 
-  // 音楽を生成
-  const generateMusic = async (answers) => {
-    setIsGenerating(true);
-    setGenerationStatus('generating_music');
-    try {
-      // 定期的に進捗を取得
-      const progressInterval = setInterval(async () => {
-        try {
-          const progressResponse = await axios.get(`${API_URL}/generation-progress`);
-          if (progressResponse.data.progress) {
-            setNotification({
-              type: 'info',
-              message: `楽曲生成中... ${progressResponse.data.progress}%`
-            });
-          }
-        } catch (error) {
-          console.error('Error getting progress:', error);
+  // 音楽生成関数内の修正
+const generateMusic = async (answers) => {
+  setIsGenerating(true);
+  setGenerationStatus('generating_music');
+  try {
+    // 定期的に進捗を取得
+    const progressInterval = setInterval(async () => {
+      try {
+        const progressResponse = await axios.get(`${API_URL}/generation-progress`);
+        if (progressResponse.data.progress) {
+          setNotification({
+            type: 'info',
+            message: `楽曲生成中... ${progressResponse.data.progress}%`
+          });
         }
-      }, 3000);
+      } catch (error) {
+        console.error('Error getting progress:', error);
+      }
+    }, 3000);
 
-       // 音楽生成リクエスト
+    // 音楽生成リクエスト
     const response = await axios.post(`${API_URL}/generate-music`, {
       answers
     });
@@ -267,6 +267,13 @@ const [generationStatus, setGenerationStatus] = useState(null);
         video_url: response.data.video_url
       });
       setGenerationStatus('complete');
+
+      // 完了メッセージの音声を再生
+      if (response.data.completion_message) {
+        setCurrentQuestion(response.data.completion_message.text);
+        await playAudio(response.data.completion_message.audio);
+      }
+
       window.open(response.data.video_url, '_blank');
       setNotification({
         type: 'success',
@@ -274,16 +281,23 @@ const [generationStatus, setGenerationStatus] = useState(null);
       });
     }
   } catch (error) {
-      console.error('Error generating music:', error);
-      setGenerationStatus(null);
-      setNotification({
-        type: 'error',
-        message: '音楽の生成に失敗しました'
-      });
-    } finally {
-      setIsGenerating(false);
+    console.error('Error generating music:', error);
+    setGenerationStatus(null);
+    
+    // エラーメッセージの音声を再生
+    if (error.response?.data?.error_message) {
+      setCurrentQuestion(error.response.data.error_message.text);
+      await playAudio(error.response.data.error_message.audio);
     }
-  };
+    
+    setNotification({
+      type: 'error',
+      message: '音楽の生成に失敗しました'
+    });
+  } finally {
+    setIsGenerating(false);
+  }
+};
 
   // アプリケーションのリセット
   const resetApplication = () => {
