@@ -346,8 +346,9 @@ const generateMusic = async (answers) => {
             {!isStarted ? (
               // スタート前の画面
               <div className="text-center py-12">
-                <h2 className="text-2xl font-handwriting mb-6">
-                  あなたの思い出から素敵な楽曲を作ります
+                <h2 className="text-3xl font-chalk text-white mb-8 chalk-effect tracking-wider leading-relaxed">
+                  あなたの思い出から<br />
+                  素敵な楽曲を作ります
                 </h2>
                 <button
                   onClick={startInterview}
